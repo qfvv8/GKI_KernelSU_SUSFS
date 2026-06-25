@@ -1206,7 +1206,25 @@ jobs:
           # 配置 defconfig（幂等）
           grep -q '^CONFIG_REKERNEL=y$' "$DEFCONFIG" || echo "CONFIG_REKERNEL=y" >> "$DEFCONFIG"
           grep -q '^CONFIG_REKERNEL_NETWORK=y$' "$DEFCONFIG" || echo "CONFIG_REKERNEL_NETWORK=y" >> "$DEFCONFIG"
-
+       - name: 补全 KPM Kconfig 声明
+        if: (inputs.use_kpm == 'enabled (开启)' || startsWith(inputs.use_kpm, 'patched')) && (inputs.ksu_variant == 'SukiSU' || inputs.ksu_variant == 'ReSukiSU' || inputs.ksu_variant == 'Next')
+        working-directory: ${{ env.KERNEL_ROOT }}
+        run: |
+          if ! grep -RqsE '^[[:space:]]*config[[:space:]]+KPM([[:space:]]|$)' common KernelSU 2>/dev/null; then
+            echo "补充 CONFIG_KPM Kconfig 声明..."
+            mkdir -p common/kernel/kpm
+            {
+              echo 'config KPM'
+              echo '    bool "KernelPatch Module support"'
+              echo '    default n'
+              echo '    help'
+              echo '      Enable KernelPatch Module support for loading .kpm modules.'
+            } > common/kernel/kpm/Kconfig
+            if ! grep -Rqs 'source.*kernel/kpm/Kconfig' common/ Kconfig* KernelSU/ 2>/dev/null; then
+              echo 'source "kernel/kpm/Kconfig"' >> KernelSU/kernel/Kconfig
+            fi
+            echo "已补全 KPM Kconfig"
+          fi
       - name: 配置内核选项
         working-directory: ${{ env.KERNEL_ROOT }}
         run: |
@@ -1214,6 +1232,7 @@ jobs:
           CONFIG_KSU=y
           CONFIG_TMPFS_XATTR=y
           CONFIG_TMPFS_POSIX_ACL=y
+          CONFIG_KPM=y
           EOF
 
           if [ "${{ inputs.ksu_variant }}" == "SukiSU" ] || [ "${{ inputs.ksu_variant }}" == "SukiSU(40726)" ] || [ "${{ inputs.ksu_variant }}" == "SukiSU(40548)" ] || [ "${{ inputs.ksu_variant }}" == "ReSukiSU" ] || [ "${{ inputs.ksu_variant }}" == "Next" ]; then
