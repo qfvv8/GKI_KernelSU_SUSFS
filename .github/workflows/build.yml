@@ -184,7 +184,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y ccache python3 git curl build-essential libssl-dev bison flex libelf-dev dwarves
-
+          curl -sSL https://packages.microsoft.com/keys/microsoft.asc | gpg --dearmor | sudo tee /etc/apt/keyrings/microsoft.gpg > /dev/null
       - name: 配置 ccache
         run: |
           mkdir -p ~/.cache/bazel
