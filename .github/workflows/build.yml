@@ -1206,7 +1206,7 @@ jobs:
           # 配置 defconfig（幂等）
           grep -q '^CONFIG_REKERNEL=y$' "$DEFCONFIG" || echo "CONFIG_REKERNEL=y" >> "$DEFCONFIG"
           grep -q '^CONFIG_REKERNEL_NETWORK=y$' "$DEFCONFIG" || echo "CONFIG_REKERNEL_NETWORK=y" >> "$DEFCONFIG"
-          
+
       - name: 补全 KPM Kconfig 声明
         if: (inputs.use_kpm == 'enabled (开启)' || startsWith(inputs.use_kpm, 'patched')) && (inputs.ksu_variant == 'SukiSU' || inputs.ksu_variant == 'ReSukiSU' || inputs.ksu_variant == 'Next')
         working-directory: ${{ env.KERNEL_ROOT }}
@@ -1221,11 +1221,15 @@ jobs:
               echo '    help'
               echo '      Enable KernelPatch Module support for loading .kpm modules.'
             } > common/kernel/kpm/Kconfig
-            if ! grep -Rqs 'source.*kernel/kpm/Kconfig' common/ Kconfig* KernelSU/ 2>/dev/null; then
-              echo 'source "kernel/kpm/Kconfig"' >> KernelSU/kernel/Kconfig
-            fi
+            for kcfg in common/drivers/kernelsu/Kconfig KernelSU/kernel/Kconfig; do
+              if [ -f "$kcfg" ] && ! grep -q 'source.*kernel/kpm/Kconfig' "$kcfg" 2>/dev/null; then
+                echo 'source "kernel/kpm/Kconfig"' >> "$kcfg"
+                echo "已添加 source 到 $kcfg"
+              fi
+            done
             echo "已补全 KPM Kconfig"
           fi
+
       - name: 配置内核选项
         working-directory: ${{ env.KERNEL_ROOT }}
         run: |
@@ -1233,16 +1237,12 @@ jobs:
           CONFIG_KSU=y
           CONFIG_TMPFS_XATTR=y
           CONFIG_TMPFS_POSIX_ACL=y
-          CONFIG_KPM=y
           EOF
 
           if [ "${{ inputs.ksu_variant }}" == "SukiSU" ] || [ "${{ inputs.ksu_variant }}" == "SukiSU(40726)" ] || [ "${{ inputs.ksu_variant }}" == "SukiSU(40548)" ] || [ "${{ inputs.ksu_variant }}" == "ReSukiSU" ] || [ "${{ inputs.ksu_variant }}" == "Next" ]; then
             if [[ "${{ inputs.use_kpm }}" == enabled* ]] || [[ "${{ inputs.use_kpm }}" == patched* ]]; then
-              if ! grep -RqsE '^[[:space:]]*config[[:space:]]+KPM([[:space:]]|$)' common KernelSU 2>/dev/null; then
-                echo "错误: 已请求启用 KPM，但当前 KernelSU 代码未声明 CONFIG_KPM" >&2
-                exit 1
-              fi
               echo "CONFIG_KPM=y" >> "$DEFCONFIG"
+              grep -q '^CONFIG_KALLSYMS=y$' "$DEFCONFIG" || echo "CONFIG_KALLSYMS=y" >> "$DEFCONFIG"
             fi
           fi
 
@@ -1411,26 +1411,34 @@ jobs:
             echo "当前 SUSFS 最新提交日期: ${SUSFS_LATEST_COMMIT_DATE}"
             echo "如果日期不同或相差过远则补丁失效、编译失败"
 
-      # - name: 应用 KPM 补丁 (SukiSU/ReSukiSU/Next)
-      #   if: startsWith(inputs.use_kpm, 'patched') && (inputs.ksu_variant == 'SukiSU' || inputs.ksu_variant == 'ReSukiSU' || inputs.ksu_variant == 'Next')
-      #   run: |
-      #     case "${{ inputs.android_version }}" in
-      #       "android12"|"android13")
-      #         if [ "${{ inputs.kernel_version }}" != "6.6" ]; then
-      #           TARGET_PATH="$KERNEL_ROOT/out/${{ inputs.android_version }}-${{ inputs.kernel_version }}/dist"
-      #         fi
-      #         ;;
-      #       "android14"|"android15"|"android16")
-      #         TARGET_PATH="$KERNEL_ROOT/bazel-bin/common/kernel_aarch64/"
-      #         ;;
-      #     esac
+      - name: 克隆 KPM 补丁项目
+        if: startsWith(inputs.use_kpm, 'patched') && (inputs.ksu_variant == 'SukiSU' || inputs.ksu_variant == 'ReSukiSU' || inputs.ksu_variant == 'Next')
+        run: |
+          git clone --depth 1 https://github.com/SukiSU-Ultra/SukiSU_KernelPatch_patch.git /tmp/SukiSU_KernelPatch_patch
 
-      #     cp -r $SUKISU_PATCHES/kpm/patch_linux "$TARGET_PATH/patch"
-      #     cd "$TARGET_PATH"
-      #     chmod 777 patch
-      #     ./patch
-      #     rm -rf Image
-      #     mv oImage Image
+      - name: 应用 KPM 补丁 (patched 模式)
+        if: startsWith(inputs.use_kpm, 'patched') && (inputs.ksu_variant == 'SukiSU' || inputs.ksu_variant == 'ReSukiSU' || inputs.ksu_variant == 'Next')
+        run: |
+          case "${{ inputs.android_version }}" in
+            "android12"|"android13")
+              if [ "${{ inputs.kernel_version }}" != "6.6" ]; then
+                TARGET_PATH="$KERNEL_ROOT/out/${{ inputs.android_version }}-${{ inputs.kernel_version }}/dist"
+              else
+                TARGET_PATH="$KERNEL_ROOT/bazel-bin/common/kernel_aarch64/"
+              fi
+              ;;
+            "android14"|"android15"|"android16")
+              TARGET_PATH="$KERNEL_ROOT/bazel-bin/common/kernel_aarch64/"
+              ;;
+          esac
+
+          cd "$TARGET_PATH"
+          curl -LO https://github.com/SukiSU-Ultra/SukiSU_KernelPatch_patch/releases/latest/download/patch_linux
+          chmod +x patch_linux
+          ./patch_linux
+          rm -rf Image
+          mv oImage Image
+          echo "KPM patched 补丁应用完成"
 
       - name: 准备 Boot 镜像
         run: |
