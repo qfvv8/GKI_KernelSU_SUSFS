@@ -1206,7 +1206,8 @@ jobs:
           # 配置 defconfig（幂等）
           grep -q '^CONFIG_REKERNEL=y$' "$DEFCONFIG" || echo "CONFIG_REKERNEL=y" >> "$DEFCONFIG"
           grep -q '^CONFIG_REKERNEL_NETWORK=y$' "$DEFCONFIG" || echo "CONFIG_REKERNEL_NETWORK=y" >> "$DEFCONFIG"
-       - name: 补全 KPM Kconfig 声明
+          
+      - name: 补全 KPM Kconfig 声明
         if: (inputs.use_kpm == 'enabled (开启)' || startsWith(inputs.use_kpm, 'patched')) && (inputs.ksu_variant == 'SukiSU' || inputs.ksu_variant == 'ReSukiSU' || inputs.ksu_variant == 'Next')
         working-directory: ${{ env.KERNEL_ROOT }}
         run: |
